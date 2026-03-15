@@ -350,10 +350,33 @@ function WhatsAppChat() {
 
 // --- Components ---
 function Logo({ settings, className = "" }: { settings: SiteSettings, className?: string }) {
+  const [imgError, setImgError] = useState(false);
+  const fallbackLogo = "https://images.unsplash.com/photo-1614850523296-d8c1af93d400?q=80&w=200";
+
+  // Reset error state when logo_url changes
+  useEffect(() => {
+    setImgError(false);
+  }, [settings.logo_url]);
+
   return (
     <div className={`flex items-center ${className}`}>
       <div className="h-10 w-auto flex items-center justify-center mr-2 overflow-hidden">
-        <img src={settings.logo_url} alt="Logo" className="h-full w-auto object-contain" referrerPolicy="no-referrer" />
+        {!imgError ? (
+          <img 
+            src={settings.logo_url} 
+            alt="Logo" 
+            className="h-full w-auto object-contain" 
+            referrerPolicy="no-referrer"
+            onError={() => setImgError(true)}
+          />
+        ) : (
+          <img 
+            src={fallbackLogo} 
+            alt="Logo Fallback" 
+            className="h-full w-auto object-contain" 
+            referrerPolicy="no-referrer"
+          />
+        )}
       </div>
       <div className="hidden sm:block">
         <span className="text-xl font-bold tracking-tight text-white">{settings.site_name}</span>
