@@ -1918,8 +1918,25 @@ function AdminLoginPage({ settings, key }: { settings: SiteSettings, key?: strin
         body: JSON.stringify({ email, password })
       });
       
-      const data = await res.json();
-      console.log("Login response:", data);
+      const text = await res.text();
+      console.log("Login response status:", res.status);
+      console.log("Login response text:", text);
+      
+      if (!text) {
+        setError(`Server returned an empty response (${res.status})`);
+        return;
+      }
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("Failed to parse JSON:", text);
+        setError(`Server returned non-JSON response (${res.status})`);
+        return;
+      }
+      
+      console.log("Login response data:", data);
       
       if (data.success) {
         const adminData = data.admin;
@@ -1945,7 +1962,8 @@ function AdminLoginPage({ settings, key }: { settings: SiteSettings, key?: strin
           <div className="w-12 h-12 gold-gradient rounded-xl flex items-center justify-center mx-auto mb-4">
             <Lock className="text-primary" />
           </div>
-          <h2 className="text-2xl font-bold">Admin Portal</h2>
+          <h2 className="text-2xl font-bold">Admin Portal v1.2</h2>
+          <p className="text-green-400 text-xs font-mono mt-1">SYSTEM UPDATED - PLEASE REFRESH</p>
           <p className="text-white/60 text-sm mt-2">Access Trustline CMS</p>
           {settings.sec_logo_url && (
             <div className="mt-6 flex flex-col items-center gap-2">

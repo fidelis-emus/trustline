@@ -165,8 +165,12 @@ const adminPassword = "admin123";
 const adminExists = db.prepare("SELECT * FROM admin WHERE email = ?").get(adminEmail.toLowerCase()) as any;
 
 if (!adminExists) {
+  console.log("Seeding admin user...");
   const hashedAdminPassword = bcrypt.hashSync(adminPassword, 10);
   db.prepare("INSERT INTO admin (email, password) VALUES (?, ?)").run(adminEmail.toLowerCase(), hashedAdminPassword);
+  console.log("Admin user seeded.");
+} else {
+  console.log("Admin user already exists.");
 }
 
 // Seed initial products if empty
@@ -197,6 +201,9 @@ if (newsCount.count === 0) {
 async function startServer() {
   const app = express();
   app.use(express.json());
+
+  // Health check
+  app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
   const uploadsDir = path.join(__dirname, "public", "uploads");
   if (!fs.existsSync(uploadsDir)) {
@@ -248,6 +255,8 @@ async function startServer() {
 
   // Admin: Login
   app.post("/api/admin/login", async (req, res) => {
+    console.log("--- LOGIN ROUTE HIT ---");
+    res.setHeader('Content-Type', 'application/json');
     const { email, password } = req.body;
     console.log("Login attempt:", { email });
     
@@ -596,10 +605,13 @@ async function startServer() {
   });
 
   // --- VITE MIDDLEWARE ---
+  console.log("Environment mode:", process.env.NODE_ENV || "development");
   if (process.env.NODE_ENV !== "production") {
+    console.log("Starting Vite dev server...");
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
   } else {
+    console.log("Serving production build from dist...");
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
