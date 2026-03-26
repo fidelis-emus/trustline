@@ -240,18 +240,34 @@ async function startServer() {
 
   // --- API ROUTES ---
 
+  // Debug: List Admins (REMOVE BEFORE PRODUCTION)
+  app.get("/api/debug/admins", (req, res) => {
+    const admins = db.prepare("SELECT id, email FROM admin").all();
+    res.json(admins);
+  });
+
   // Admin: Login
   app.post("/api/admin/login", async (req, res) => {
     const { email, password } = req.body;
+    console.log("Login attempt:", { email });
+    
+    if (!email || !password) {
+      return res.status(400).json({ success: false, error: "Email and password are required" });
+    }
+
     try {
       const admin = db.prepare("SELECT * FROM admin WHERE email = ?").get(email.trim().toLowerCase()) as any;
+      console.log("Admin found:", admin ? "Yes" : "No");
       if (admin && await bcrypt.compare(password, admin.password)) {
+        console.log("Password match: Yes");
         const token = jwt.sign({ id: admin.id, email: admin.email, role: 'admin' }, JWT_SECRET);
         res.json({ success: true, token, admin: { id: admin.id, email: admin.email, role: 'admin' } });
       } else {
+        console.log("Password match: No");
         res.status(401).json({ success: false, error: "Invalid admin credentials" });
       }
     } catch (error) {
+      console.error("Login error:", error);
       res.status(500).json({ success: false, error: "Login failed" });
     }
   });

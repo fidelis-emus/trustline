@@ -1911,22 +1911,26 @@ function AdminLoginPage({ settings, key }: { settings: SiteSettings, key?: strin
     setError("");
     
     try {
+      console.log("Attempting login for:", email);
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
       });
+      
       const data = await res.json();
+      console.log("Login response:", data);
       
       if (data.success) {
         const adminData = data.admin;
         login(data.token, { ...adminData, role: 'admin' });
         navigate("/admin");
       } else {
-        setError(data.error);
+        setError(data.error || "Invalid admin credentials");
       }
-    } catch (err) {
-      setError("Connection failed");
+    } catch (err: any) {
+      console.error("Login fetch error:", err);
+      setError(err.message || "Connection failed");
     }
   };
 
