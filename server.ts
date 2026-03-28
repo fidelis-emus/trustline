@@ -23,7 +23,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "trustline-secret-key-2026";
 // --- DATABASE INITIALIZATION ---
 const isPostgres = !!process.env.DATABASE_URL;
 let db: any;
-let pgPool: any = null;
+let pgPool: pg.Pool | null = null;
 
 if (isPostgres) {
   console.log("[DATABASE] Using PostgreSQL");
@@ -40,18 +40,11 @@ if (isPostgres) {
   db = new Database(dbPath);
 }
 
-// Converts ?-style placeholders to $1, $2, ... for pg
-function toPositional(sql: string): string {
-  let i = 0;
-  return sql.replace(/\?/g, () => "$" + (++i));
-}
-
-
 // Database Helper Functions
 async function dbQuery(sql: string, params: any[] = []) {
   if (isPostgres && pgPool) {
-    const result = await pgPool.query(toPositional(sql), params);
-    return result.rows;
+    const res = await pgPool.query(sql.replace(/\?/g, (_, i) => `$${i + 1}`), params);
+    return res.rows;
   } else {
     return db.prepare(sql).all(...params);
   }
@@ -59,8 +52,8 @@ async function dbQuery(sql: string, params: any[] = []) {
 
 async function dbGet(sql: string, params: any[] = []) {
   if (isPostgres && pgPool) {
-    const result = await pgPool.query(toPositional(sql), params);
-    return result.rows[0] || null;
+    const res = await pgPool.query(sql.replace(/\?/g, (_, i) => `$${i + 1}`), params);
+    return res.rows[0];
   } else {
     return db.prepare(sql).get(...params);
   }
@@ -68,7 +61,7 @@ async function dbGet(sql: string, params: any[] = []) {
 
 async function dbRun(sql: string, params: any[] = []) {
   if (isPostgres && pgPool) {
-    return await pgPool.query(toPositional(sql), params);
+    return await pgPool.query(sql.replace(/\?/g, (_, i) => `$${i + 1}`), params);
   } else {
     return db.prepare(sql).run(...params);
   }
@@ -76,6 +69,7 @@ async function dbRun(sql: string, params: any[] = []) {
 
 async function dbExec(sql: string) {
   if (isPostgres && pgPool) {
+    // Split multiple statements for Postgres if necessary, or just run as is if simple
     return await pgPool.query(sql);
   } else {
     return db.exec(sql);
