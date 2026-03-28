@@ -10,7 +10,7 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import Database from "better-sqlite3";
 import { v2 as cloudinary } from "cloudinary";
-import pg from "pg";
+import pgPromise from "pg-promise";
 
 console.log("[SERVER] Script starting...");
 dotenv.config();
@@ -23,11 +23,12 @@ const JWT_SECRET = process.env.JWT_SECRET || "trustline-secret-key-2026";
 // --- DATABASE INITIALIZATION ---
 const isPostgres = !!process.env.DATABASE_URL;
 let db: any;
-let pgPool: pg.Pool | null = null;
+let pgDb: any = null;
 
 if (isPostgres) {
   console.log("[DATABASE] Using PostgreSQL");
-  pgPool = new pg.Pool({
+  const pgp = pgPromise();
+  pgDb = pgp({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
   });
@@ -40,37 +41,40 @@ if (isPostgres) {
   db = new Database(dbPath);
 }
 
+// Converts ?-style placeholders to $1, $2, ... for pg-promise
+function toPositional(sql: string): string {
+  let i = 0;
+  return sql.replace(/\?/g, () => `${++i}`);
+}
+
 // Database Helper Functions
 async function dbQuery(sql: string, params: any[] = []) {
-  if (isPostgres && pgPool) {
-    const res = await pgPool.query(sql.replace(/\?/g, (_, i) => `$${i + 1}`), params);
-    return res.rows;
+  if (isPostgres && pgDb) {
+    return await pgDb.any(toPositional(sql), params);
   } else {
     return db.prepare(sql).all(...params);
   }
 }
 
 async function dbGet(sql: string, params: any[] = []) {
-  if (isPostgres && pgPool) {
-    const res = await pgPool.query(sql.replace(/\?/g, (_, i) => `$${i + 1}`), params);
-    return res.rows[0];
+  if (isPostgres && pgDb) {
+    return await pgDb.oneOrNone(toPositional(sql), params);
   } else {
     return db.prepare(sql).get(...params);
   }
 }
 
 async function dbRun(sql: string, params: any[] = []) {
-  if (isPostgres && pgPool) {
-    return await pgPool.query(sql.replace(/\?/g, (_, i) => `$${i + 1}`), params);
+  if (isPostgres && pgDb) {
+    return await pgDb.none(toPositional(sql), params);
   } else {
     return db.prepare(sql).run(...params);
   }
 }
 
 async function dbExec(sql: string) {
-  if (isPostgres && pgPool) {
-    // Split multiple statements for Postgres if necessary, or just run as is if simple
-    return await pgPool.query(sql);
+  if (isPostgres && pgDb) {
+    return await pgDb.multi(sql);
   } else {
     return db.exec(sql);
   }
