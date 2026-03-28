@@ -2677,23 +2677,23 @@ function AdminPanel({ products, fetchProducts, siteSettings, fetchSettings, news
       const data = await res.json();
       if (data.success) {
         if (type === 'product') {
-          setNewProduct({ ...newProduct, image_url: data.url });
+          setNewProduct({ ...newProduct, image_url: data.imageUrl });
         } else if (type === 'team') {
-          setNewMember({ ...newMember, image_url: data.url });
+          setNewMember({ ...newMember, image_url: data.imageUrl });
         } else if (type === 'logo') {
-          setLocalSettings({ ...localSettings, logo_url: data.url });
+          setLocalSettings({ ...localSettings, logo_url: data.imageUrl });
         } else if (type === 'news') {
-          setNewNews({ ...newNews, image_url: data.url });
+          setNewNews({ ...newNews, image_url: data.imageUrl });
         } else if (type === 'md_speech') {
-          setLocalSettings({ ...localSettings, md_speech_image: data.url });
+          setLocalSettings({ ...localSettings, md_speech_image: data.imageUrl });
         } else if (type === 'gallery') {
-          setNewGalleryItem({ ...newGalleryItem, image_url: data.url });
+          setNewGalleryItem({ ...newGalleryItem, image_url: data.imageUrl });
         } else if (type === 'staff_gallery') {
-          setNewStaffGalleryItem({ ...newStaffGalleryItem, image_url: data.url });
+          setNewStaffGalleryItem({ ...newStaffGalleryItem, image_url: data.imageUrl });
         } else if (type === 'testimonial') {
-          setNewTestimonial({ ...newTestimonial, image_url: data.url });
+          setNewTestimonial({ ...newTestimonial, image_url: data.imageUrl });
         } else if (type === 'tailored') {
-          setNewTailored({ ...newTailored, image_url: data.url });
+          setNewTailored({ ...newTailored, image_url: data.imageUrl });
         }
       }
     } catch (error) {
@@ -2741,7 +2741,7 @@ function AdminPanel({ products, fetchProducts, siteSettings, fetchSettings, news
       });
       const data = await res.json();
       if (data.success) {
-        const newLogoUrl = data.url;
+        const newLogoUrl = data.imageUrl;
         // Update settings immediately
         const settingsRes = await fetch("/api/admin/settings", {
           method: "POST",
@@ -2778,7 +2778,7 @@ function AdminPanel({ products, fetchProducts, siteSettings, fetchSettings, news
       });
       const data = await res.json();
       if (data.success) {
-        const newLogoUrl = data.url;
+        const newLogoUrl = data.imageUrl;
         // Update settings immediately
         const settingsRes = await fetch("/api/admin/settings", {
           method: "POST",

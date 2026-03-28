@@ -10,7 +10,7 @@ import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import Database from "better-sqlite3";
 import { v2 as cloudinary } from "cloudinary";
-import pgPromise from "pg-promise";
+import pg from "pg";
 
 console.log("[SERVER] Script starting...");
 dotenv.config();
@@ -23,12 +23,11 @@ const JWT_SECRET = process.env.JWT_SECRET || "trustline-secret-key-2026";
 // --- DATABASE INITIALIZATION ---
 const isPostgres = !!process.env.DATABASE_URL;
 let db: any;
-let pgDb: any = null;
+let pgPool: any = null;
 
 if (isPostgres) {
   console.log("[DATABASE] Using PostgreSQL");
-  const pgp = pgPromise();
-  pgDb = pgp({
+  pgPool = new pg.Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false }
   });
@@ -41,40 +40,43 @@ if (isPostgres) {
   db = new Database(dbPath);
 }
 
-// Converts ?-style placeholders to $1, $2, ... for pg-promise
+// Converts ?-style placeholders to $1, $2, ... for pg
 function toPositional(sql: string): string {
   let i = 0;
-  return sql.replace(/\?/g, () => `${++i}`);
+  return sql.replace(/\?/g, () => "$" + (++i));
 }
+
 
 // Database Helper Functions
 async function dbQuery(sql: string, params: any[] = []) {
-  if (isPostgres && pgDb) {
-    return await pgDb.any(toPositional(sql), params);
+  if (isPostgres && pgPool) {
+    const result = await pgPool.query(toPositional(sql), params);
+    return result.rows;
   } else {
     return db.prepare(sql).all(...params);
   }
 }
 
 async function dbGet(sql: string, params: any[] = []) {
-  if (isPostgres && pgDb) {
-    return await pgDb.oneOrNone(toPositional(sql), params);
+  if (isPostgres && pgPool) {
+    const result = await pgPool.query(toPositional(sql), params);
+    return result.rows[0] || null;
   } else {
     return db.prepare(sql).get(...params);
   }
 }
 
 async function dbRun(sql: string, params: any[] = []) {
-  if (isPostgres && pgDb) {
-    return await pgDb.none(toPositional(sql), params);
+  if (isPostgres && pgPool) {
+    return await pgPool.query(toPositional(sql), params);
   } else {
     return db.prepare(sql).run(...params);
   }
 }
 
 async function dbExec(sql: string) {
-  if (isPostgres && pgDb) {
-    return await pgDb.multi(sql);
+  if (isPostgres && pgPool) {
+    return await pgPool.query(sql);
   } else {
     return db.exec(sql);
   }
@@ -710,10 +712,10 @@ async function startServer() {
         });
         // Remove local file after upload to Cloudinary
         fs.unlinkSync(req.file.path);
-        res.json({ success: true, url: result.secure_url });
+        res.json({ success: true, imageUrl: result.secure_url });
       } else {
-        const url = `/uploads/${req.file.filename}`;
-        res.json({ success: true, url });
+        const imageUrl = `/uploads/${req.file.filename}`;
+        res.json({ success: true, imageUrl });
       }
     } catch (error) {
       console.error("Upload error:", error);
