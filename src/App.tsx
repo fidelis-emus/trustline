@@ -1618,7 +1618,13 @@ function CalculatorPage({ products, key }: { products: Product[], key?: string }
     const product = products.find(p => p.id === selectedProductId);
     if (!product) return;
     
-    const grossProfit = (amount * (product.expected_return / 100)) * (duration / 12);
+    // Use specific rate based on duration if available, otherwise fallback to expected_return
+    let annualRate = product.expected_return;
+    if (duration === 3 && product.rate_3m) annualRate = product.rate_3m;
+    else if (duration === 6 && product.rate_6m) annualRate = product.rate_6m;
+    else if (duration === 12 && product.rate_12m) annualRate = product.rate_12m;
+
+    const grossProfit = (amount * (annualRate / 100)) * (duration / 12);
     const tax = grossProfit * 0.10; // 10% withholding tax
     const netProfit = grossProfit - tax;
     
@@ -1690,7 +1696,7 @@ function CalculatorPage({ products, key }: { products: Product[], key?: string }
                   onChange={(e) => setDuration(Number(e.target.value))}
                   className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-accent"
                 >
-                  {[3, 6, 9, 12, 18, 24, 36].map(m => (
+                  {[3, 6, 12].map(m => (
                     <option key={m} value={m} className="text-primary">{m} Months</option>
                   ))}
                 </select>
@@ -1714,7 +1720,17 @@ function CalculatorPage({ products, key }: { products: Product[], key?: string }
                 <div className="space-y-3 w-full border-t border-primary/10 pt-8 text-left">
                   <div className="flex justify-between items-center text-sm">
                     <span className="opacity-60">Interest Rate</span>
-                    <span className="font-bold">{products.find(p => p.id === selectedProductId)?.expected_return}% p.a.</span>
+                    <span className="font-bold">
+                      {(() => {
+                        const product = products.find(p => p.id === selectedProductId);
+                        if (!product) return '0%';
+                        let annualRate = product.expected_return;
+                        if (duration === 3 && product.rate_3m) annualRate = product.rate_3m;
+                        else if (duration === 6 && product.rate_6m) annualRate = product.rate_6m;
+                        else if (duration === 12 && product.rate_12m) annualRate = product.rate_12m;
+                        return `${annualRate}% p.a.`;
+                      })()}
+                    </span>
                   </div>
                   <div className="flex justify-between items-center text-sm">
                     <span className="opacity-60">Principal</span>
@@ -1766,7 +1782,7 @@ function ContactPage({ settings, key }: { settings: SiteSettings, key?: string }
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
 
     try {
-      const res = await fetch("/api/contact", {
+      const res = await fetch("/api/contacts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -1947,12 +1963,19 @@ function AdminLoginPage({ settings, key }: { settings: SiteSettings, key?: strin
     setError("");
     
     try {
-      console.log("Attempting login for:", email);
-      const res = await fetch("/api/admin/login", {
+      const loginUrl = "/api/admin/login";
+      const fullUrl = window.location.origin + loginUrl;
+      console.log(`[AdminLogin] Attempting POST to ${fullUrl} with email: ${email}`);
+      const res = await fetch(loginUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
         body: JSON.stringify({ email, password })
       });
+      console.log(`[AdminLogin] Response status: ${res.status}, ok: ${res.ok}, type: ${res.type}`);
+      console.log(`[AdminLogin] Response headers:`, Object.fromEntries(res.headers.entries()));
       
       const text = await res.text();
       console.log("Login response status:", res.status);
@@ -3711,13 +3734,16 @@ function AdminPanel({ products, fetchProducts, siteSettings, fetchSettings, news
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Duration (Months)</label>
-                <input 
-                  type="number" required
+                <label className="block text-sm font-medium text-slate-700 mb-1">Default Duration (Months)</label>
+                <select 
                   value={newProduct.duration_months}
                   onChange={(e) => setNewProduct({ ...newProduct, duration_months: Number(e.target.value) })}
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2 focus:outline-none focus:border-accent" 
-                />
+                  className="w-full border border-slate-200 rounded-xl px-4 py-2 focus:outline-none focus:border-accent"
+                >
+                  <option value={3}>3 Months</option>
+                  <option value={6}>6 Months</option>
+                  <option value={12}>12 Months</option>
+                </select>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div>

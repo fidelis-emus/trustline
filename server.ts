@@ -9,23 +9,10 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 import { initializeApp } from "firebase/app";
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  getDocs, 
-  getDoc, 
-  setDoc, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  query, 
-  where, 
-  orderBy, 
-  limit,
-  getDocFromServer
-} from "firebase/firestore";
+import { getFirestore, collection, getDocs, doc, getDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy, limit, addDoc } from "firebase/firestore";
+import { getAuth } from "firebase/auth";
 
+console.log("[SERVER] Script starting...");
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -35,18 +22,19 @@ const JWT_SECRET = process.env.JWT_SECRET || "trustline-secret-key-2026";
 
 // Load Firebase Config
 const firebaseConfig = JSON.parse(fs.readFileSync(path.join(__dirname, "firebase-applet-config.json"), "utf8"));
+
+// Initialize Firebase
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+const auth = getAuth(firebaseApp);
 
 // Test Connection
 async function testConnection() {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log("Firestore connected successfully.");
+    await getDoc(doc(db, 'test', 'connection'));
+    console.log("Firestore connected successfully via Client SDK.");
   } catch (error) {
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration. The client is offline.");
-    }
+    console.error("Firestore connection error:", error);
   }
 }
 testConnection();
@@ -58,9 +46,26 @@ async function startServer() {
 
   // Global Request Logger
   app.use((req, res, next) => {
-    console.log(`[REQUEST] ${new Date().toISOString()} - ${req.method} ${req.url}`);
+    const start = Date.now();
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      console.log(`[REQUEST] ${new Date().toISOString()} - ${req.method} ${req.url} - ${res.statusCode} (${duration}ms) - Content-Type: ${res.get('Content-Type')}`);
+    });
     next();
   });
+
+  // Trailing slash middleware for API
+  app.use((req, res, next) => {
+    if (req.url.startsWith("/api/") && req.url.endsWith("/") && req.url.length > 5) {
+      const oldUrl = req.url;
+      req.url = req.url.slice(0, -1);
+      console.log(`[REWRITE] Trailing slash removed: ${oldUrl} -> ${req.url}`);
+    }
+    next();
+  });
+
+  console.log(`[SERVER] Mode: ${process.env.NODE_ENV || "development"}`);
+  console.log(`[SERVER] Static path: ${path.join(process.cwd(), "dist")}`);
 
   // Health check
   app.get("/api/health", (req, res) => res.json({ status: "ok", mode: process.env.NODE_ENV || "development" }));
@@ -86,11 +91,20 @@ async function startServer() {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
     
-    if (!token) return res.status(401).json({ success: false, error: "Unauthorized" });
+    console.log(`[AUTH] Checking token for ${req.method} ${req.url}`);
+    
+    if (!token) {
+      console.warn(`[AUTH] No token provided for ${req.url}`);
+      return res.status(401).json({ success: false, error: "Unauthorized" });
+    }
 
     jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
-      if (err) return res.status(403).json({ success: false, error: "Forbidden" });
+      if (err) {
+        console.error(`[AUTH] Token verification failed for ${req.url}:`, err.message);
+        return res.status(403).json({ success: false, error: "Forbidden" });
+      }
       req.user = user;
+      console.log(`[AUTH] Token verified for user: ${user.email}`);
       next();
     });
   };
@@ -107,31 +121,46 @@ async function startServer() {
   };
 
   // Admin: Login
-  app.post("/api/admin/login", async (req, res) => {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ success: false, error: "Email and password required" });
+  app.all("/api/admin/login", async (req, res) => {
+    console.log(`[LOGIN] ${new Date().toISOString()} - Method: ${req.method}, URL: ${req.url}`);
+    
+    if (req.method !== "POST") {
+      console.warn(`[LOGIN] Method ${req.method} not allowed for login`);
+      return res.status(405).json({ 
+        success: false, 
+        error: "Method Not Allowed. Please use POST.",
+        receivedMethod: req.method
+      });
+    }
+
+    console.log(`[LOGIN] Headers: ${JSON.stringify(req.headers)}`);
+    console.log(`[LOGIN] Body keys: ${Object.keys(req.body || {})}`);
+    
+    const { email, password } = req.body || {};
+    if (!email || !password) {
+      console.log("[LOGIN] Missing credentials");
+      return res.status(400).json({ success: false, error: "Email and password required" });
+    }
 
     try {
       // Check for default admin
       if (email.toLowerCase() === "fidelisemus@gmail.com" || email.toLowerCase() === "admin@trustline.com") {
-        // In a real app, we'd check the password against Firestore
-        // For now, we'll allow admin@trustline.com with admin123 or check Firestore
-        const adminQuery = query(collection(db, "admin"), where("email", "==", email.toLowerCase()));
-        const adminSnap = await getDocs(adminQuery);
+        const adminSnap = await getDocs(query(collection(db, "admin"), where("email", "==", email.toLowerCase())));
         
-        let admin: any = null;
+        let adminData: any = null;
         if (!adminSnap.empty) {
-          admin = { id: adminSnap.docs[0].id, ...adminSnap.docs[0].data() };
+          adminData = { id: adminSnap.docs[0].id, ...adminSnap.docs[0].data() };
         } else if (email.toLowerCase() === "admin@trustline.com") {
           // Fallback for initial setup if Firestore is empty
           const hashedPassword = await bcrypt.hash("admin123", 10);
-          admin = { email: "admin@trustline.com", password: hashedPassword };
-          await addDoc(collection(db, "admin"), admin);
+          adminData = { email: "admin@trustline.com", password: hashedPassword };
+          const docRef = await addDoc(collection(db, "admin"), adminData);
+          adminData.id = docRef.id;
         }
 
-        if (admin && (await bcrypt.compare(password, admin.password) || (email.toLowerCase() === "fidelisemus@gmail.com" && password === "admin123"))) {
-          const token = jwt.sign({ id: admin.id || 'default', email: admin.email, role: 'admin' }, JWT_SECRET);
-          return res.json({ success: true, token, admin: { email: admin.email, role: 'admin' } });
+        if (adminData && (await bcrypt.compare(password, adminData.password) || (email.toLowerCase() === "fidelisemus@gmail.com" && password === "admin123"))) {
+          const token = jwt.sign({ id: adminData.id || 'default', email: adminData.email, role: 'admin' }, JWT_SECRET);
+          return res.json({ success: true, token, admin: { email: adminData.email, role: 'admin' } });
         }
       }
       res.status(401).json({ success: false, error: "Invalid credentials" });
@@ -139,6 +168,15 @@ async function startServer() {
       console.error("Login error:", error);
       res.status(500).json({ success: false, error: "Login failed" });
     }
+  });
+
+  // Admin: Profile
+  app.all("/api/admin/profile", authenticateAdmin, async (req: any, res) => {
+    console.log(`[PROFILE] ${new Date().toISOString()} - Method: ${req.method}, URL: ${req.url}`);
+    if (req.method !== "GET") {
+      return res.status(405).json({ success: false, error: "Method Not Allowed. Please use GET." });
+    }
+    res.json({ success: true, user: req.user });
   });
 
   // Settings: Get All
@@ -156,6 +194,7 @@ async function startServer() {
       });
       res.json(settings);
     } catch (error) {
+      console.error("Error fetching settings:", error);
       res.status(500).json({ success: false, error: "Failed to fetch settings" });
     }
   });
@@ -165,8 +204,7 @@ async function startServer() {
     const settings = req.body;
     try {
       for (const [key, value] of Object.entries(settings)) {
-        const q = query(collection(db, "settings"), where("key", "==", key));
-        const snap = await getDocs(q);
+        const snap = await getDocs(query(collection(db, "settings"), where("key", "==", key)));
         const val = key === 'core_values' ? JSON.stringify(value) : String(value);
         if (!snap.empty) {
           await updateDoc(doc(db, "settings", snap.docs[0].id), { value: val });
@@ -481,18 +519,44 @@ async function startServer() {
     res.json({ success: true, imageUrl });
   });
 
+  // --- API CATCH-ALL ---
+  // This ensures that any request starting with /api/ that didn't match a route
+  // returns a 404 JSON instead of falling through to the SPA catch-all (HTML).
+  app.all("/api/*", (req, res) => {
+    console.log(`[API 404] ${req.method} ${req.url} - No route matched`);
+    res.status(404).json({ 
+      success: false, 
+      error: `API route not found: ${req.method} ${req.url}`,
+      method: req.method,
+      url: req.url,
+      timestamp: new Date().toISOString()
+    });
+  });
+
   // --- VITE MIDDLEWARE ---
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: "spa" });
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
+    console.log(`[SERVER] Serving static files from: ${distPath}`);
+    if (!fs.existsSync(distPath)) {
+      console.error(`[SERVER] ERROR: dist folder not found at ${distPath}`);
+    }
     app.use(express.static(distPath));
-    app.get("*", (req, res) => res.sendFile(path.join(distPath, "index.html")));
+    app.get("*", (req, res) => {
+      console.log(`[SPA FALLBACK] ${req.method} ${req.url} - Serving index.html`);
+      const indexPath = path.join(distPath, "index.html");
+      if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+      } else {
+        res.status(404).send("index.html not found - build might have failed");
+      }
+    });
   }
 
-  const PORT = Number(process.env.PORT) || 3000;
-  app.listen(PORT, "0.0.0.0", () => console.log(`Server running on port ${PORT}`));
+  const PORT = process.env.PORT || 3000;
+  app.listen(Number(PORT), "0.0.0.0", () => console.log(`Server running on port ${PORT}`));
 }
 
 startServer();
