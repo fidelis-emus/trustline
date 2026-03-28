@@ -300,7 +300,7 @@ async function startServer() {
     }
 
     try {
-      const admin = await dbGet("SELECT * FROM admin WHERE email = ?", [email.toLowerCase()]) as any;
+      const admin = await dbGet("SELECT * FROM admin WHERE email = $1::text", [email.toLowerCase()]) as any;
       
       if (admin && await bcrypt.compare(password, admin.password)) {
         const token = jwt.sign({ id: admin.id, email: admin.email, role: 'admin' }, JWT_SECRET);
