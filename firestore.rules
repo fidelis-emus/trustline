@@ -26,8 +26,13 @@ service cloud.firestore {
     // Collection Rules
     // ===============================================================
 
+    match /admin/{adminId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      allow read: if true; // Allow server to check user roles
       allow create: if isAuthenticated() && isOwner(userId);
       allow update: if (isOwner(userId) && request.resource.data.role == resource.data.role) || isAdmin();
     }

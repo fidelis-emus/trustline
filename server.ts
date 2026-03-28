@@ -143,30 +143,53 @@ async function startServer() {
     }
 
     try {
+      console.log(`[LOGIN] Processing login for: ${email}`);
+      
       // Check for default admin
       if (email.toLowerCase() === "fidelisemus@gmail.com" || email.toLowerCase() === "admin@trustline.com") {
+        console.log(`[LOGIN] Recognized admin email: ${email}`);
         const adminSnap = await getDocs(query(collection(db, "admin"), where("email", "==", email.toLowerCase())));
+        console.log(`[LOGIN] Firestore lookup for ${email} - Found: ${!adminSnap.empty}`);
         
         let adminData: any = null;
         if (!adminSnap.empty) {
           adminData = { id: adminSnap.docs[0].id, ...adminSnap.docs[0].data() };
         } else if (email.toLowerCase() === "admin@trustline.com") {
-          // Fallback for initial setup if Firestore is empty
+          console.log(`[LOGIN] Initializing default admin@trustline.com account`);
           const hashedPassword = await bcrypt.hash("admin123", 10);
           adminData = { email: "admin@trustline.com", password: hashedPassword };
           const docRef = await addDoc(collection(db, "admin"), adminData);
           adminData.id = docRef.id;
+          console.log(`[LOGIN] Created admin@trustline.com with ID: ${docRef.id}`);
         }
 
-        if (adminData && (await bcrypt.compare(password, adminData.password) || (email.toLowerCase() === "fidelisemus@gmail.com" && password === "admin123"))) {
-          const token = jwt.sign({ id: adminData.id || 'default', email: adminData.email, role: 'admin' }, JWT_SECRET);
-          return res.json({ success: true, token, admin: { email: adminData.email, role: 'admin' } });
+        // Check password
+        const isHardcodedAdmin = email.toLowerCase() === "fidelisemus@gmail.com" && password === "admin123";
+        const isDbAdmin = adminData && (await bcrypt.compare(password, adminData.password));
+
+        if (isHardcodedAdmin || isDbAdmin) {
+          console.log(`[LOGIN] Authentication successful for: ${email}`);
+          const token = jwt.sign({ 
+            id: adminData?.id || 'default', 
+            email: email.toLowerCase(), 
+            role: 'admin' 
+          }, JWT_SECRET);
+          return res.json({ success: true, token, admin: { email: email.toLowerCase(), role: 'admin' } });
+        } else {
+          console.warn(`[LOGIN] Authentication failed for: ${email} - Incorrect password`);
         }
+      } else {
+        console.warn(`[LOGIN] Rejected: ${email} is not a recognized admin email`);
       }
       res.status(401).json({ success: false, error: "Invalid credentials" });
-    } catch (error) {
-      console.error("Login error:", error);
-      res.status(500).json({ success: false, error: "Login failed" });
+    } catch (error: any) {
+      console.error("[LOGIN] Error during login process:", error);
+      console.error("[LOGIN] Error details:", {
+        message: error.message,
+        code: error.code,
+        stack: error.stack
+      });
+      res.status(500).json({ success: false, error: "Login failed", details: error.message });
     }
   });
 
