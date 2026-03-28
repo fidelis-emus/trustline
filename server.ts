@@ -43,7 +43,8 @@ if (isPostgres) {
 // Database Helper Functions
 async function dbQuery(sql: string, params: any[] = []) {
   if (isPostgres && pgPool) {
-    const res = await pgPool.query(sql.replace(/\?/g, (_, i) => `$${i + 1}`), params);
+    let paramIndex = 0;
+    const res = await pgPool.query(sql.replace(/\?/g, () => `${++paramIndex}`), params);
     return res.rows;
   } else {
     return db.prepare(sql).all(...params);
@@ -52,7 +53,8 @@ async function dbQuery(sql: string, params: any[] = []) {
 
 async function dbGet(sql: string, params: any[] = []) {
   if (isPostgres && pgPool) {
-    const res = await pgPool.query(sql.replace(/\?/g, (_, i) => `$${i + 1}`), params);
+    let paramIndex = 0;
+    const res = await pgPool.query(sql.replace(/\?/g, () => `${++paramIndex}`), params);
     return res.rows[0];
   } else {
     return db.prepare(sql).get(...params);
@@ -61,7 +63,8 @@ async function dbGet(sql: string, params: any[] = []) {
 
 async function dbRun(sql: string, params: any[] = []) {
   if (isPostgres && pgPool) {
-    return await pgPool.query(sql.replace(/\?/g, (_, i) => `$${i + 1}`), params);
+    let paramIndex = 0;
+    return await pgPool.query(sql.replace(/\?/g, () => `${++paramIndex}`), params);
   } else {
     return db.prepare(sql).run(...params);
   }
