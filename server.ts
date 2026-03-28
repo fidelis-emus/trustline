@@ -710,10 +710,10 @@ async function startServer() {
         });
         // Remove local file after upload to Cloudinary
         fs.unlinkSync(req.file.path);
-        res.json({ success: true, imageUrl: result.secure_url });
+        res.json({ success: true, url: result.secure_url });
       } else {
-        const imageUrl = `/uploads/${req.file.filename}`;
-        res.json({ success: true, imageUrl });
+        const url = `/uploads/${req.file.filename}`;
+        res.json({ success: true, url });
       }
     } catch (error) {
       console.error("Upload error:", error);
